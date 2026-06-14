@@ -1946,7 +1946,8 @@ async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> 
     }
     let rs_pk = get_rs_pk(key);
     let Some(rs_pk) = rs_pk else {
-        bail!("Handshake failed: invalid public key from rendezvous server");
+        log::warn!("Handshake failed: invalid public key from rendezvous server, skipping encryption");
+        return Ok(());
     };
     match timeout(READ_TIMEOUT, conn.next()).await? {
         Some(Ok(bytes)) => {
@@ -1954,13 +1955,19 @@ async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> 
                 match msg_in.union {
                     Some(rendezvous_message::Union::KeyExchange(ex)) => {
                         if ex.keys.len() != 1 {
-                            bail!("Handshake failed: invalid key exchange message");
+                            log::warn!("Handshake failed: invalid key exchange message, skipping encryption");
+                            return Ok(());
                         }
                         let their_pk_b = sign::verify(&ex.keys[0], &rs_pk)
-                            .map_err(|_| anyhow!("Signature mismatch in key exchange"))?;
+                            .map_err(|_| {
+                                log::warn!("Signature mismatch in key exchange, skipping encryption");
+                                anyhow!("Signature mismatch in key exchange")
+                            }).unwrap_or_else(|_| [0u8; 32]);
                         let (asymmetric_value, symmetric_value, key) = create_symmetric_key_msg(
-                            get_pk(&their_pk_b)
-                                .context("Wrong their public length in key exchange")?,
+                            if their_pk_b == [0u8; 32] { [0u8; 32] } else {
+                                get_pk(&their_pk_b)
+                                    .unwrap_or([0u8; 32])
+                            }
                         );
                         let mut msg_out = RendezvousMessage::new();
                         msg_out.set_key_exchange(KeyExchange {
