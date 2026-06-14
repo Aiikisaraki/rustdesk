@@ -1962,7 +1962,7 @@ async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> 
                             .map_err(|_| {
                                 log::warn!("Signature mismatch in key exchange, skipping encryption");
                                 anyhow!("Signature mismatch in key exchange")
-                            }).unwrap_or_else(|_| [0u8; 32]);
+                            }).unwrap_or_else(|_| vec![0u8; 32]);
                         let (asymmetric_value, symmetric_value, key) = create_symmetric_key_msg(
                             if their_pk_b == [0u8; 32] { [0u8; 32] } else {
                                 get_pk(&their_pk_b)
